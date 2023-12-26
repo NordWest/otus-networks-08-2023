@@ -149,3 +149,132 @@ R24#show ip bgp | inc 2042
 *>                   10.0.0.22                0             0 2042 ?
 ```
 #### 2.3 Настроить провайдера Киторн так, чтобы в офис Москва отдавался только маршрут по умолчанию.
+- Включаю soft-reconfiguration inbound и смотрю, что приходит на R14 со стороны R22:
+```
+R14(config-router)#neighbor 10.0.0.9  soft-reconfiguration inbound
+
+R14#show ip bgp ipv4 unicast neighbors 10.0.0.9 received-routes
+BGP table version is 45, local router ID is 10.0.0.46
+Status codes: s suppressed, d damped, h history, * valid, > best, i - internal,
+              r RIB-failure, S Stale, m multipath, b backup-path, f RT-Filter,
+              x best-external, a additional-path, c RIB-compressed,
+Origin codes: i - IGP, e - EGP, ? - incomplete
+RPKI validation codes: V valid, I invalid, N Not found
+
+     Network          Next Hop            Metric LocPrf Weight Path
+ *   10.0.0.8/31      10.0.0.9                 0             0 101 ?
+ *   10.0.0.12/31     10.0.0.9                               0 101 301 ?
+ *   10.0.0.16/31     10.0.0.9                               0 101 520 2042 ?
+ *   10.0.0.22/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.26/31     10.0.0.9                 0             0 101 ?
+ *   10.0.0.28/31     10.0.0.9                               0 101 301 ?
+ *   10.0.0.30/31     10.0.0.9                 0             0 101 ?
+ *   10.0.0.32/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.34/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.36/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.38/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.40/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.42/31     10.0.0.9                               0 101 520 ?
+ *   10.1.0.24/32     10.0.0.9                               0 101 520 ?
+ *   10.1.0.25/32     10.0.0.9                               0 101 520 ?
+ *   192.168.102.0    10.0.0.9                               0 101 520 i
+
+Total number of prefixes 16
+
+```
+- Создаю на R22 дефолтный маршрут и объявляем его в bgp:
+```
+R22(config)#ip route 0.0.0.0 0.0.0.0 null 0
+```
+- Он появляется на R14:
+```
+R14#show ip bgp ipv4 unicast neighbors 10.0.0.9 received-routes
+BGP table version is 47, local router ID is 10.0.0.46
+Status codes: s suppressed, d damped, h history, * valid, > best, i - internal,
+              r RIB-failure, S Stale, m multipath, b backup-path, f RT-Filter,
+              x best-external, a additional-path, c RIB-compressed,
+Origin codes: i - IGP, e - EGP, ? - incomplete
+RPKI validation codes: V valid, I invalid, N Not found
+
+     Network          Next Hop            Metric LocPrf Weight Path
+ *   0.0.0.0          10.0.0.9                               0 101 i
+ *   10.0.0.8/31      10.0.0.9                 0             0 101 ?
+ *   10.0.0.12/31     10.0.0.9                               0 101 301 ?
+ *   10.0.0.16/31     10.0.0.9                               0 101 520 2042 ?
+ *   10.0.0.22/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.26/31     10.0.0.9                 0             0 101 ?
+ *   10.0.0.28/31     10.0.0.9                               0 101 301 ?
+ *   10.0.0.30/31     10.0.0.9                 0             0 101 ?
+ *   10.0.0.32/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.34/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.36/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.38/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.40/31     10.0.0.9                               0 101 520 ?
+ *   10.0.0.42/31     10.0.0.9                               0 101 520 ?
+ *   10.1.0.24/32     10.0.0.9                               0 101 520 ?
+ *   10.1.0.25/32     10.0.0.9                               0 101 520 ?
+ *   192.168.102.0    10.0.0.9                               0 101 520 i
+
+ Total number of prefixes 17
+```
+- Теперь нужен prefix-list в сторону R14:
+```
+R22(config)#ip prefix-list DEF_R seq 10 permit 0.0.0.0/0
+
+R22(config-router)#neighbor 10.0.0.8 prefix-list DEF_R out
+```
+- Что на R14:
+```
+R14#show ip bgp ipv4 unicast neighbors 10.0.0.9 received-routes
+BGP table version is 47, local router ID is 10.0.0.46
+Status codes: s suppressed, d damped, h history, * valid, > best, i - internal,
+              r RIB-failure, S Stale, m multipath, b backup-path, f RT-Filter,
+              x best-external, a additional-path, c RIB-compressed,
+Origin codes: i - IGP, e - EGP, ? - incomplete
+RPKI validation codes: V valid, I invalid, N Not found
+
+     Network          Next Hop            Metric LocPrf Weight Path
+ *   0.0.0.0          10.0.0.9                               0 101 i
+
+Total number of prefixes 1
+```
+- Остался один дефолт.
+```
+R14#show ip bgp  
+BGP table version is 47, local router ID is 10.0.0.46
+Status codes: s suppressed, d damped, h history, * valid, > best, i - internal,
+              r RIB-failure, S Stale, m multipath, b backup-path, f RT-Filter,
+              x best-external, a additional-path, c RIB-compressed,
+Origin codes: i - IGP, e - EGP, ? - incomplete
+RPKI validation codes: V valid, I invalid, N Not found
+
+     Network          Next Hop            Metric LocPrf Weight Path
+ *>i 0.0.0.0          10.0.0.13                0    100      0 301 101 i
+ *                    10.0.0.9                       50      0 101 i
+ *>  10.0.0.0/31      0.0.0.0                  0         32768 ?
+ r>i 10.0.0.2/31      10.0.0.47                0    100      0 ?
+ r>i 10.0.0.4/31      10.0.0.47                0    100      0 ?
+ *>  10.0.0.6/31      0.0.0.0                  0         32768 ?
+ *>  10.0.0.8/31      0.0.0.0                  0         32768 i
+ *>  10.0.0.10/31     0.0.0.0                  0         32768 ?
+ *>i 10.0.0.12/31     10.0.0.47                0    100      0 ?
+ r>i 10.0.0.14/31     10.0.0.47                0    100      0 ?
+ *>i 10.0.0.16/31     10.0.0.13                0    100      0 301 520 2042 ?
+ *>i 10.0.0.22/31     10.0.0.13                0    100      0 301 520 ?
+ *>i 10.0.0.26/31     10.0.0.13                0    100      0 301 ?
+ *>i 10.0.0.28/31     10.0.0.13                0    100      0 301 ?
+ *>i 10.0.0.30/31     10.0.0.13                0    100      0 301 520 i
+ *>i 10.0.0.32/31     10.0.0.13                0    100      0 301 520 ?
+ *>i 10.0.0.34/31     10.0.0.13                0    100      0 301 520 ?
+ *>i 10.0.0.36/31     10.0.0.13                0    100      0 301 520 ?
+ *>i 10.0.0.38/31     10.0.0.13                0    100      0 301 520 ?
+ *>i 10.0.0.40/31     10.0.0.13                0    100      0 301 520 ?
+ *>i 10.0.0.42/31     10.0.0.13                0    100      0 301 520 ?
+ * i 10.0.0.46/31     10.0.0.47                0    100      0 ?
+ *>                   0.0.0.0                  0         32768 ?
+ *>i 10.1.0.24/32     10.0.0.13                0    100      0 301 520 ?
+ *>i 10.1.0.25/32     10.0.0.13                0    100      0 301 520 ?
+ *>i 192.168.102.0    10.0.0.13                0    100      0 301 520 i
+
+```
+- Все остальные маршруты от 10.0.0.47 (R15) или через него от 10.0.0.13 (R21).
