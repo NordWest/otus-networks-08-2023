@@ -278,3 +278,174 @@ RPKI validation codes: V valid, I invalid, N Not found
 
 ```
 - Все остальные маршруты от 10.0.0.47 (R15) или через него от 10.0.0.13 (R21).
+
+#### 2.4 Настроить провайдера Ламас так, чтобы в офис Москва отдавался только маршрут по умолчанию и префикс офиса С.-Петербург.
+- Изначаль но на R15 ситуация следующая:
+```
+R15#show ip bgp      
+BGP table version is 48, local router ID is 10.0.0.47
+Status codes: s suppressed, d damped, h history, * valid, > best, i - internal,
+              r RIB-failure, S Stale, m multipath, b backup-path, f RT-Filter,
+              x best-external, a additional-path, c RIB-compressed,
+Origin codes: i - IGP, e - EGP, ? - incomplete
+RPKI validation codes: V valid, I invalid, N Not found
+
+     Network          Next Hop            Metric LocPrf Weight Path
+ *>  0.0.0.0          10.0.0.13                              0 301 101 i
+ r>i 10.0.0.0/31      10.0.0.46                0    100      0 ?
+ *>  10.0.0.2/31      0.0.0.0                  0         32768 ?
+ *>  10.0.0.4/31      0.0.0.0                  0         32768 ?
+ r>i 10.0.0.6/31      10.0.0.46                0    100      0 ?
+ *>i 10.0.0.8/31      10.0.0.46                0    100      0 i
+ r>i 10.0.0.10/31     10.0.0.46                0    100      0 ?
+ *   10.0.0.12/31     10.0.0.13                0             0 301 ?
+ *>                   0.0.0.0                  0         32768 ?
+ *>  10.0.0.14/31     0.0.0.0                  0         32768 ?
+ *>  10.0.0.16/31     10.0.0.13                              0 301 520 2042 ?
+ *>  10.0.0.22/31     10.0.0.13                              0 301 520 ?
+ *>  10.0.0.26/31     10.0.0.13                0             0 301 ?
+ *>  10.0.0.28/31     10.0.0.13                0             0 301 ?
+ *>  10.0.0.30/31     10.0.0.13                              0 301 520 i
+ *>  10.0.0.32/31     10.0.0.13                              0 301 520 ?
+ *>  10.0.0.34/31     10.0.0.13                              0 301 520 ?
+ *>  10.0.0.36/31     10.0.0.13                              0 301 520 ?
+ *>  10.0.0.38/31     10.0.0.13                              0 301 520 ?
+ *>  10.0.0.40/31     10.0.0.13                              0 301 520 ?
+ *>  10.0.0.42/31     10.0.0.13                              0 301 520 ?
+ * i 10.0.0.46/31     10.0.0.46                0    100      0 ?
+ *>                   0.0.0.0                  0         32768 ?
+ *>  10.1.0.24/32     10.0.0.13                              0 301 520 ?
+ *>  10.1.0.25/32     10.0.0.13                              0 301 520 ?
+ *>  192.168.102.0    10.0.0.13                              0 301 520 i
+
+```
+- Делаю фильтрацию дефолтного маршрута:
+```
+R21(config)#ip route 0.0.0.0 0.0.0.0 null 0
+R21(config)#router bgp 301
+R21(config-router)#network 0.0.0.0
+R21(config-router)#exit
+R21(config)#ip prefix-list DEF_R seq 10 permit 0.0.0.0/0
+R21(config)#router bgp 301
+R21(config-router)#neighbor 10.0.0.12 DEF_R out
+
+```
+- Проверяю на R15:
+```
+R15#show ip bgp                   
+BGP table version is 63, local router ID is 10.0.0.47
+Status codes: s suppressed, d damped, h history, * valid, > best, i - internal,
+              r RIB-failure, S Stale, m multipath, b backup-path, f RT-Filter,
+              x best-external, a additional-path, c RIB-compressed,
+Origin codes: i - IGP, e - EGP, ? - incomplete
+RPKI validation codes: V valid, I invalid, N Not found
+
+     Network          Next Hop            Metric LocPrf Weight Path
+ *>  0.0.0.0          10.0.0.13                0             0 301 i
+ r>i 10.0.0.0/31      10.0.0.46                0    100      0 ?
+ *>  10.0.0.2/31      0.0.0.0                  0         32768 ?
+ *>  10.0.0.4/31      0.0.0.0                  0         32768 ?
+ r>i 10.0.0.6/31      10.0.0.46                0    100      0 ?
+ *>i 10.0.0.8/31      10.0.0.46                0    100      0 i
+ r>i 10.0.0.10/31     10.0.0.46                0    100      0 ?
+ *>  10.0.0.12/31     0.0.0.0                  0         32768 ?
+ *>  10.0.0.14/31     0.0.0.0                  0         32768 ?
+ * i 10.0.0.46/31     10.0.0.46                0    100      0 ?
+ *>                   0.0.0.0                  0         32768 ?
+R15#
+
+```
+- Если сделать так, то работать не будет:
+```
+R21(config)#ip as-path access-list 1 permit _2042$
+R21(config)#ip prefix-list DEF_R seq 10 permit 0.0.0.0/0
+
+R21(config-router)#neighbor 10.0.0.12 prefix-list DEF_R out
+R21(config-router)#neighbor 10.0.0.12 filter-list 1 out
+```
+- R15 получит дефолт, но не маршруты AS2042.
+- Надо делать через route-map:
+```
+R21(config)#route-map TO_AS1001 permit 10
+R21(config-route-map)#match as-path 1
+R21(config-route-map)#exit
+R21(config)#route-map TO_AS1001 permit 20
+R21(config-route-map)#match ip address prefix-list DEF_R
+R21(config-route-map)#exit
+R21(config)#route-map TO_AS1001 deny 100
+R21(config-route-map)#exit
+R21(config)#router bgp 301
+R21(config-router)#neighbor 10.0.0.12 route-map TO_AS1001 out
+
+```
+- Теперь получается так:
+```
+R15#show ip bgp                   
+BGP table version is 93, local router ID is 10.0.0.47
+Status codes: s suppressed, d damped, h history, * valid, > best, i - internal,
+              r RIB-failure, S Stale, m multipath, b backup-path, f RT-Filter,
+              x best-external, a additional-path, c RIB-compressed,
+Origin codes: i - IGP, e - EGP, ? - incomplete
+RPKI validation codes: V valid, I invalid, N Not found
+
+     Network          Next Hop            Metric LocPrf Weight Path
+ *>  0.0.0.0          10.0.0.13                0             0 301 i
+ r>i 10.0.0.0/31      10.0.0.46                0    100      0 ?
+ *>  10.0.0.2/31      0.0.0.0                  0         32768 ?
+ *>  10.0.0.4/31      0.0.0.0                  0         32768 ?
+ r>i 10.0.0.6/31      10.0.0.46                0    100      0 ?
+ *>i 10.0.0.8/31      10.0.0.46                0    100      0 i
+ r>i 10.0.0.10/31     10.0.0.46                0    100      0 ?
+ *>  10.0.0.12/31     0.0.0.0                  0         32768 ?
+ *>  10.0.0.14/31     0.0.0.0                  0         32768 ?
+ *>  10.0.0.16/31     10.0.0.13                              0 301 520 2042 ?
+ * i 10.0.0.46/31     10.0.0.46                0    100      0 ?
+ *>                   0.0.0.0                  0         32768 ?
+R15#
+
+```
+- Есть 0.0.0.0 и 10.0.0.16 из AS2042. Есть и пинг:
+```
+R15#ping 10.0.0.16
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.16, timeout is 2 seconds:
+!!!!!
+Success rate is 100 percent (5/5), round-trip min/avg/max = 1/2/7 ms
+```
+
+#### 2.5. Все сети в лабораторной работе должны иметь IP связность.
+```
+R14>ping 10.0.0.16
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.16, timeout is 2 seconds:
+!!!!!
+Success rate is 100 percent (5/5), round-trip min/avg/max = 1/2/3 ms
+R22>ping 10.0.0.24
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.24, timeout is 2 seconds:
+.....
+Success rate is 0 percent (0/5)
+
+```
+- Не пингуется R18, надо расширить prefix-list:
+```
+R18#configure terminal
+Enter configuration commands, one per line.  End with CNTL/Z.
+R18(config)#ip prefix-list NO-TRANSIT seq 10 permit 10.0.0.22/31
+R18(config)#ip prefix-list NO-TRANSIT seq 20 permit 10.0.0.24/31
+```
+- Проверяю.
+```
+R14>ping 10.0.0.24
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.24, timeout is 2 seconds:
+!!!!!
+Success rate is 100 percent (5/5), round-trip min/avg/max = 1/1/2 ms
+
+R15>ping 10.0.0.22
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.22, timeout is 2 seconds:
+!!!!!
+Success rate is 100 percent (5/5), round-trip min/avg/max = 1/1/2 ms
+
+```
