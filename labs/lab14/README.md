@@ -138,6 +138,79 @@ tcp 10.10.0.1:39263    10.0.0.8:39263     10.0.0.9:179       10.0.0.9:179
 
 
 #### 2.2 Настроить NAT(PAT) на R18. Трансляция должна осуществляться в пул из 5 адресов автономной системы AS2042.
+- Настраиваю R18
+```
+R18(config)#ip route 10.10.1.1 255.255.255.255 null 0
+R18(config)#ip route 10.10.1.2 255.255.255.255 null 0
+R18(config)#ip route 10.10.1.3 255.255.255.255 null 0
+R18(config)#ip route 10.10.1.4 255.255.255.255 null 0
+R18(config)#ip route 10.10.1.5 255.255.255.255 null 0
+
+R18(config)#router bgp 2042
+R18(config-router)#network 10.10.1.1 mask 255.255.255.255
+R18(config-router)#network 10.10.1.2 mask 255.255.255.255
+R18(config-router)#network 10.10.1.3 mask 255.255.255.255
+R18(config-router)#network 10.10.1.4 mask 255.255.255.255
+R18(config-router)#network 10.10.1.5 mask 255.255.255.255
+R18(config-router)#exit
+```
+- Сморю на R24 и там сетей 10.10.1.[1-5] нет. Надо их добавить ещё в prefix-list.
+```
+R18(config)#ip prefix-list NO-TRANSIT permit 10.10.1.1/32
+R18(config)#ip prefix-list NO-TRANSIT permit 10.10.1.2/32
+R18(config)#ip prefix-list NO-TRANSIT permit 10.10.1.3/32
+R18(config)#ip prefix-list NO-TRANSIT permit 10.10.1.4/32
+R18(config)#ip prefix-list NO-TRANSIT permit 10.10.1.5/32
+```
+- Адреса появились.
+```
+R24#show ip bgp
+...
+ * i 10.10.1.1/32     10.0.0.24                0    100      0 2042 i
+ *>                   10.0.0.22                0             0 2042 i
+ * i 10.10.1.2/32     10.0.0.24                0    100      0 2042 i
+ *>                   10.0.0.22                0             0 2042 i
+ * i 10.10.1.3/32     10.0.0.24                0    100      0 2042 i
+ *>                   10.0.0.22                0             0 2042 i
+ * i 10.10.1.4/32     10.0.0.24                0    100      0 2042 i
+ *>                   10.0.0.22                0             0 2042 i
+ * i 10.10.1.5/32     10.0.0.24                0    100      0 2042 i
+ *>                   10.0.0.22                0             0 2042 i
+ r>i 192.168.102.0    10.0.0.45                0    100      0 i
+```
+- Настраиваю NAT.
+```
+R15(config)#access-list 100 permit ip 10.0.0.20 0.0.0.0 any
+R15(config)#ip nat pool POOL_NAT_AS2042 10.10.1.1 10.10.1.5 prefix 24
+
+R18(config)#interface e0/2
+R18(config-if)#ip nat outside 
+R18(config-if)#exit
+R18(config)#interface e0/3
+R18(config-if)#ip nat outside
+R18(config-if)#exit
+R18(config)#interface e0/0
+R18(config-if)#ip nat inside
+R18(config-if)#exit          
+R18(config)#interface e0/1
+R18(config-if)#ip nat inside
+
+R18(config)#ip nat inside source list 100 pool POOL_NAT_AS2042 overload
+```
+- Проверяю
+```
+R17>ping 10.0.0.12
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.12, timeout is 2 seconds:
+!!!!!
+Success rate is 100 percent (5/5), round-trip min/avg/max = 1/1/3 ms
+R17>
+R18#show ip nat translations
+Pro Inside global      Inside local       Outside local      Outside global
+icmp 10.10.1.1:3       10.0.0.20:3        10.0.0.12:3        10.0.0.12:3
+R18#
+```
+
 #### 2.3 Настроить статический NAT для R20.
 #### 2.4 Настроить NAT так, чтобы R19 был доступен с любого узла для удаленного управления.
 #### 2.5 Настроить статический NAT(PAT) для офиса Чокурдах.
