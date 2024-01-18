@@ -49,6 +49,7 @@
 |               | e0/2          | 10.0.0.12       | 255.255.255.254 | N/A             |
 |               | e0/3          | 10.0.0.14       | 255.255.255.254 | N/A             |
 |               | e1/0          | 10.0.0.47       | 255.255.255.254 | N/A             |
+|               |               | 10.10.0.16      | 255.255.255.255 | N/A             |
 | R18           | e0/0          | 10.0.0.17       | 255.255.255.254 | N/A             |
 |               | e0/1          | 10.0.0.21       | 255.255.255.254 | N/A             |
 |               | e0/2          | 10.0.0.22       | 255.255.255.254 | N/A             |
@@ -57,9 +58,85 @@
 |               | lo1           | 10.1.0.19       | 255.255.255.255 | N/A             |
 | R20           | e0/0          | 10.0.0.15       | 255.255.255.254 | N/A             |
 
+#### 1.3 Белые сети
+
+| AS            | IP Pool              | Subnet          |
+|---------------|----------------------|-----------------|
+| 1001          | 10.10.0.1            | 255.255.255.255 |
+| 2042          | 10.10.1.1-10.10.1.5  | 255.255.255.248 |
 
 ### 2. Настройка.
 #### 2.1 Настроить NAT(PAT) на R14 и R15. Трансляция должна осуществляться в адрес автономной системы AS1001.
+- Сначала R15, через который идет трафик.
+- Прописываю маршрут до белого адреса и объявляю его в BGP
+```
+R15(config)#ip route 10.10.0.1 255.255.255.255 null 0
+R15(config)#router bgp 1001
+R15(config-router)#network 10.10.0.1 mask 255.255.255.255
+```
+- Теперь настройка NAT. Пока только для одного интерфейса со стороны R12.
+```
+R15(config)#access-list 100 permit ip 10.0.0.2 0.0.0.0 any
+R15(config)#ip nat pool POOL_NAT_AS1001 10.10.0.1 10.10.0.1 prefix 24
+
+R15(config)#interface ethernet 0/2
+R15(config-if)#ip nat outside
+R15(config)#interface ethernet 0/1
+R15(config-if)#ip nat inside
+
+R15(config)#ip nat inside source list 100 pool POOL_NAT_AS1001 overload
+```
+- Проверяю пингом.
+```
+R12>ping 10.0.0.22
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.22, timeout is 2 seconds:
+!!!!!
+Success rate is 100 percent (5/5), round-trip min/avg/max = 1/1/3 ms
+R12>
+```
+- Пинг есть, в таблице трансляции виже работу NAT.
+```
+R15#sh ip nat translations
+Pro Inside global      Inside local       Outside local      Outside global
+icmp 10.10.0.1:7       10.0.0.2:7         10.0.0.22:7        10.0.0.22:7
+```
+- Теперь настрою на R14.
+```
+R14(config)#ip route 10.10.0.1 255.255.255.255 null 0
+R14(config)#router bgp 1001
+R14(config-router)#network 10.10.0.1 mask 255.255.255.255
+
+R14(config)#interface e0/0
+R14(config-if)#ip nat inside
+R14(config-if)#exit
+R14(config)#interface e0/2
+R14(config-if)#ip nat outside
+R14(config-if)#exit
+R14(config)#access-list 100 permit ip 10.0.0.0 0.255.255.255 any
+R14(config)#access-list 100 permit ip 10.0.0.2 0.255.255.255 any
+R14(config)#ip nat pool POOL_NAT_AS1001 10.10.0.1 10.10.0.1 prefix 24
+R14(config)#ip nat inside source list 100 pool POOL_NAT_AS1001 overload
+```
+- Проверяю
+```
+R12>ping 10.0.0.22
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.22, timeout is 2 seconds:
+!!!!!
+Success rate is 100 percent (5/5), round-trip min/avg/max = 2/2/3 ms
+
+
+R14(config)#do show ip nat translations                         
+Pro Inside global      Inside local       Outside local      Outside global
+icmp 10.10.0.1:21      10.0.0.2:21        10.0.0.22:21       10.0.0.22:21
+tcp 10.10.0.1:179      10.0.0.8:179       10.0.0.9:50125     10.0.0.9:50125
+tcp 10.10.0.1:15704    10.0.0.8:15704     10.0.0.9:179       10.0.0.9:179
+tcp 10.10.0.1:39263    10.0.0.8:39263     10.0.0.9:179       10.0.0.9:179
+```
+- Непонятно только, почему транслируется 10.0.0.8.
+
+
 #### 2.2 Настроить NAT(PAT) на R18. Трансляция должна осуществляться в пул из 5 адресов автономной системы AS2042.
 #### 2.3 Настроить статический NAT для R20.
 #### 2.4 Настроить NAT так, чтобы R19 был доступен с любого узла для удаленного управления.
