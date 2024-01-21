@@ -58,12 +58,17 @@
 |               | lo1           | 10.1.0.19       | 255.255.255.255 | N/A             |
 | R20           | e0/0          | 10.0.0.15       | 255.255.255.254 | N/A             |
 
-#### 1.3 Белые сети
+#### 1.3 Public IP.
 
-| AS            | IP Pool              | Subnet          |
-|---------------|----------------------|-----------------|
-| 1001          | 10.10.0.1            | 255.255.255.255 |
-| 2042          | 10.10.1.1-10.10.1.5  | 255.255.255.248 |
+| AS            | IP global               | IP local          |
+|---------------|-------------------------|-------------------|
+| 1001          | 10.10.0.1/32            | 10.0.0.0          |
+|               |                         | 10.0.0.2          |
+|               | 10.10.0.2/32            | 10.0.0.15         |
+|               | 10.10.0.3/32            | 10.0.0.11         |
+| 2042          | 10.10.1.1-10.10.1.5     | 10.0.0.20         |
+| Чокурдах      | 10.10.2.1               | 172.16.102.10     |
+
 
 ### 2. Настройка.
 #### 2.1 Настроить NAT(PAT) на R14 и R15. Трансляция должна осуществляться в адрес автономной системы AS1001.
@@ -184,7 +189,7 @@ R15(config)#access-list 100 permit ip 10.0.0.20 0.0.0.0 any
 R15(config)#ip nat pool POOL_NAT_AS2042 10.10.1.1 10.10.1.5 prefix 24
 
 R18(config)#interface e0/2
-R18(config-if)#ip nat outside 
+R18(config-if)#ip nat outside
 R18(config-if)#exit
 R18(config)#interface e0/3
 R18(config-if)#ip nat outside
@@ -212,7 +217,138 @@ R18#
 ```
 
 #### 2.3 Настроить статический NAT для R20.
+- Для начала настраиваю iBGP между R15 и R20, чтобы на последнем появились какие-то внешние маршруты.
+- Назначаю роутеру трансляцию адреса 10.10.0.2
+```
+R15(config)#ip nat inside source static 10.0.0.15 10.10.0.2
+R15(config)#ip route 10.10.0.2 255.255.255.255 Null0
+R15(config)#interface e0/3
+R15(config-if)#ip nat inside
+R15(config)#router bgp 1001
+R15(config-router)#network 10.10.0.2 mask 255.255.255.255
+```
+- Проверяю
+```
+R20#ping 10.0.0.22
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.22, timeout is 2 seconds:
+!!!!!
+Success rate is 100 percent (5/5), round-trip min/avg/max = 1/2/6 ms
+
+R15#show ip nat translations
+Pro Inside global      Inside local       Outside local      Outside global
+icmp 10.10.0.2:4       10.0.0.15:4        10.0.0.22:4        10.0.0.22:4
+
+```
 #### 2.4 Настроить NAT так, чтобы R19 был доступен с любого узла для удаленного управления.
+- Настраиваю на R15.
+```
+R15(config)#ip route 10.10.0.3 255.255.255.255 null 0
+R15(config)#router bgp 1001
+R15(config-router)#network 10.10.0.3 mask 255.255.255.255
+R15(config-router)#exit
+R15(config)#interface e1/0
+R15(config-if)#ip nat in
+R15(config-if)#ip nat inside
+R15(config-if)#exit
+
+R15(config)#ip nat inside source static tcp 10.0.0.11 22 10.10.0.3 1922
+```
+
+- При обращении по ssh на 10.10.0.3:1922 соединение будет пробрасываться на 10.0.0.11:22
+
 #### 2.5 Настроить статический NAT(PAT) для офиса Чокурдах.
+- Проверяю перед настройкой.
+```
+SW29#ping 10.0.0.32
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.32, timeout is 2 seconds:
+.....
+Success rate is 0 percent (0/5)
+
+```
+- Настраиваю.
+```
+R28(config)#ip nat inside source static 172.16.102.10 10.10.2.1
+R28(config)#interface e0/2
+R28(config-if)#ip nat inside
+R28(config-if)#exit
+R28(config)#interface e0/0
+R28(config-if)#ip nat outside
+R28(config-if)#exit
+R28(config)#interface e0/1
+R28(config-if)#ip nat outside
+R28(config-if)#exit
+
+
+R28#show ip nat translations
+Pro Inside global      Inside local       Outside local      Outside global
+--- 10.10.2.1          172.16.102.10      ---                ---
+
+```
 #### 2.6 Настроить для IPv4 DHCP сервер в офисе Москва на маршрутизаторах R12 и R13. VPC1 и VPC7 должны получать сетевые настройки по DHCP.
+- Настройка R12.
+```
+R12(config)#ip dhcp excluded-address 192.168.100.1 192.168.100.9
+R12(config)#ip dhcp excluded-address 192.168.100.129 192.168.100.137
+
+R12(config)#ip dhcp pool pool_vpc1
+R12(dhcp-config)#network 192.168.100.0 255.255.255.128
+R12(dhcp-config)#default-router 192.168.100.1
+R12(dhcp-config)#lease 0 0 30
+
+```
+- Проверяю на VPC1
+```
+VPC1> ip dhcp
+DDORA IP 192.168.100.10/25 GW 192.168.100.1
+```
+- Теперь настройка для VPC7
+```
+R12(config)#ip dhcp pool pool_vpc7
+R12(dhcp-config)#network 192.168.100.128 255.255.255.128
+R12(dhcp-config)#default-router 192.168.100.129
+R12(dhcp-config)#lease 0 0 30
+```
+- Проверяю
+```
+VPC7> ip dhcp
+DDORA IP 192.168.100.138/25 GW 192.168.100.129
+VPC7> ping 192.168.100.129
+
+84 bytes from 192.168.100.129 icmp_seq=1 ttl=255 time=1.175 ms
+84 bytes from 192.168.100.129 icmp_seq=2 ttl=255 time=2.290 ms
+84 bytes from 192.168.100.129 icmp_seq=3 ttl=255 time=1.867 ms
+84 bytes from 192.168.100.129 icmp_seq=4 ttl=255 time=1.550 ms
+84 bytes from 192.168.100.129 icmp_seq=5 ttl=255 time=1.457 ms
+
+- Для R13 настройка аналогичная.
+```
 #### 2.7 Настроить NTP сервер на R12 и R13. Все устройства в офисе Москва должны синхронизировать время с R12 и R13.
+- Настройка R12.
+```
+R12(config)#ntp master 2
+R12(config)#interface vlan10
+R12(config-if)#ntp broadcast
+R12(config-if)#exit
+R12(config)#interface vlan20
+R12(config-if)#ntp broadcast
+R12(config-if)#exit
+R12(config)#interface vlan40
+R12(config-if)#ntp br
+R12(config-if)#ntp broadcast
+
+```
+- Настраиваю клиент на SW3 и проверяю.
+```
+SW3(config)#interface vlan40
+SW3(config-if)#ntp broadcast client
+
+SW3#show ntp associations
+
+  address         ref clock       st   when   poll reach  delay  offset   disp
+* 172.16.100.2    127.127.1.1      2     18     64     1  1.000   0.500 7938.4
+ * sys.peer, # selected, + candidate, - outlyer, x falseticker, ~ configured
+
+```
+- На остальных узлах настраивается аналогично.
