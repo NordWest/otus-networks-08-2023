@@ -279,10 +279,18 @@ R28(config-if)#exit
 R28(config)#interface e0/1
 R28(config-if)#ip nat outside
 R28(config-if)#exit
+```
+- Проверяю.
+```
+SW29>ping 10.0.0.32
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 10.0.0.32, timeout is 2 seconds:
+!!!!!
+Success rate is 100 percent (5/5), round-trip min/avg/max = 1/1/3 ms
 
-
-R28#show ip nat translations
+R28(config)#do show ip nat translations
 Pro Inside global      Inside local       Outside local      Outside global
+icmp 10.10.2.1:15      172.16.102.10:15   10.0.0.32:15       10.0.0.32:15
 --- 10.10.2.1          172.16.102.10      ---                ---
 
 ```
