@@ -31,23 +31,32 @@
 |               | e0/2          | 10.0.0.8        | 255.255.255.254 | N/A             |
 |               | e0/3          | 10.0.0.10       | 255.255.255.254 | N/A             |
 |               | e1/0          | 10.0.0.46       | 255.255.255.254 | N/A             |
+|               | lo1           | 10.1.0.14       | 255.255.255.255 | N/A             |
 | R15           | e0/0          | 10.0.0.5        | 255.255.255.254 | N/A             |
 |               | e0/1          | 10.0.0.3        | 255.255.255.254 | N/A             |
 |               | e0/2          | 10.0.0.12       | 255.255.255.254 | N/A             |
 |               | e0/3          | 10.0.0.14       | 255.255.255.254 | N/A             |
 |               | e1/0          | 10.0.0.47       | 255.255.255.254 | N/A             |
+|               | lo1           | 10.1.0.15       | 255.255.255.255 | N/A             |
 | R18           | e0/0          | 10.0.0.17       | 255.255.255.254 | N/A             |
 |               | e0/1          | 10.0.0.21       | 255.255.255.254 | N/A             |
 |               | e0/2          | 10.0.0.22       | 255.255.255.254 | N/A             |
 |               | e0/3          | 10.0.0.24       | 255.255.255.254 | N/A             |
+|               | lo1           | 10.1.0.18       | 255.255.255.255 | N/A             |
 | R19           | e0/0          | 10.0.0.11       | 255.255.255.254 | N/A             |
 | R20           | e0/0          | 10.0.0.15       | 255.255.255.254 | N/A             |
 | R21           | e0/0          | 10.0.0.13       | 255.255.255.254 | N/A             |
 |               | e0/1          | 10.0.0.26       | 255.255.255.254 | N/A             |
 |               | e0/2          | 10.0.0.28       | 255.255.255.254 | N/A             |
+|               | lo1           | 10.1.0.21       | 255.255.255.255 | N/A             |
 | R22           | e0/0          | 10.0.0.9        | 255.255.255.254 | N/A             |
 |               | e0/1          | 10.0.0.27       | 255.255.255.254 | N/A             |
 |               | e0/2          | 10.0.0.30       | 255.255.255.254 | N/A             |
+|               | lo1           | 10.1.0.22       | 255.255.255.255 | N/A             |
+| R23           | e0/0          | 10.0.0.31       | 255.255.255.254 | N/A             |
+|               | e0/1          | 10.0.0.32       | 255.255.255.254 | N/A             |
+|               | e0/2          | 10.0.0.34       | 255.255.255.254 | N/A             |
+|               | lo1           | 10.1.0.23       | 255.255.255.255 | N/A             |
 | R24           | e0/0          | 10.0.0.29       | 255.255.255.254 | N/A             |
 |               | e0/1          | 10.0.0.36       | 255.255.255.254 | N/A             |
 |               | e0/2          | 10.0.0.35       | 255.255.255.254 | N/A             |
@@ -62,6 +71,24 @@
 |               | e0/1          | 10.0.0.44       | 255.255.255.254 | N/A             |
 |               | e0/2          | 10.0.0.41       | 255.255.255.254 | N/A             |
 |               | e0/3          | 10.0.0.25       | 255.255.255.254 | N/A             |
+|               | lo1           | 10.1.0.26       | 255.255.255.255 | N/A             |
+
+#### 1.3 Настройка Loopback-интерфейсов.
+- Для отказоустойчивости сети создаю loopback-интерфейсы согласно таблице 1.2.
+- Интерфейсы Looplack 1 на R14 и R15 помещаю в ospf.
+```
+interface Loopback1
+ ip address 10.1.0.14 255.255.255.255
+ ip ospf 1 area 10
+
+```
+- Интерфейсы Looplack 1 на роутерах Триады добавляю в Is-Is.
+```
+interface Loopback1
+ ip address 10.1.0.24 255.255.255.255
+ ip router isis
+
+```
 
 ### 2. Настройка iBGP.
 #### 2.1 Настройка iBGP в офисом Москва между маршрутизаторами R14 и R15.
@@ -70,122 +97,126 @@
  - Настройка R14.
 ```
 R14(config)#router bgp 1001
-R14(config-router)#neighbor 10.0.0.47 remote-as 1001
+R14(config-router)#neighbor 10.1.0.15 remote-as 1001
+R14(config-router)#neighbor 10.1.0.15 update-source Loopback1
+
 ```
  - Настройка R15
 ```
 R15(config)#router bgp 1001
-R15(config-router)#neighbor 10.0.0.46 remote-as 1001
+R15(config-router)#neighbor 10.1.0.14 remote-as 1001
+R15(config-router)#neighbor 10.1.0.14 update-source Loopback1
 ```
 
  - Проверка, сосед виден.
  ```
  R14#show ip bgp summary
-BGP router identifier 10.0.0.10, local AS number 1001
-BGP table version is 13, main routing table version 13
-5 network entries using 700 bytes of memory
-9 path entries using 720 bytes of memory
-5/4 BGP path/bestpath attribute entries using 720 bytes of memory
-4 BGP AS-PATH entries using 112 bytes of memory
-0 BGP route-map cache entries using 0 bytes of memory
-0 BGP filter-list cache entries using 0 bytes of memory
-BGP using 2252 total bytes of memory
-BGP activity 5/0 prefixes, 9/0 paths, scan interval 60 secs
+ BGP router identifier 10.0.0.46, local AS number 1001
+ BGP table version is 72, main routing table version 72
+ 30 network entries using 4200 bytes of memory
+ 50 path entries using 4000 bytes of memory
+ 12/8 BGP path/bestpath attribute entries using 1728 bytes of memory
+ 7 BGP AS-PATH entries using 168 bytes of memory
+ 0 BGP route-map cache entries using 0 bytes of memory
+ 0 BGP filter-list cache entries using 0 bytes of memory
+ BGP using 10096 total bytes of memory
+ BGP activity 36/6 prefixes, 99/49 paths, scan interval 60 secs
 
 Neighbor        V           AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd
-10.0.0.9        4          101      31      30       13    0    0 00:20:39        4
-10.0.0.47       4         1001      12      16       13    0    0 00:05:20        4
+10.0.0.9        4          101     179     182       72    0    0 02:27:59       21
+10.1.0.15       4         1001     149     149       72    0    0 02:04:15       23
+
+R15(config)#do show ip bgp summary
+BGP router identifier 10.0.0.47, local AS number 1001
+BGP table version is 55, main routing table version 55
+30 network entries using 4200 bytes of memory
+49 path entries using 3920 bytes of memory
+12/8 BGP path/bestpath attribute entries using 1728 bytes of memory
+7 BGP AS-PATH entries using 168 bytes of memory
+0 BGP route-map cache entries using 0 bytes of memory
+0 BGP filter-list cache entries using 0 bytes of memory
+BGP using 10016 total bytes of memory
+BGP activity 34/4 prefixes, 83/34 paths, scan interval 60 secs
+
+Neighbor        V           AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd
+10.0.0.13       4          301   17541   17513       55    0    0 1w4d           20
+10.1.0.14       4         1001      15      14       55    0    0 00:02:25       23
 
  ```
 
 #### 2.2 Настройка iBGP в провайдере Триада, с использованием RR.
 
-- Настраиваю соседство роутеров.
+- Настраиваю соседство роутеров и R24.
 ```
-R23(config)#router bgp 520
-R23(config-router)#neighbor 10.0.0.33 remote-as 520
-R23(config-router)#neighbor 10.0.0.35 remote-as 520
+R23#show running-config | sect bgp
+router bgp 520
+ bgp log-neighbor-changes
+ redistribute connected
+ neighbor 10.0.0.30 remote-as 101
+ neighbor 10.0.0.30 update-source Loopback1
+ neighbor 10.1.0.24 remote-as 520
+ neighbor 10.1.0.24 update-source Loopback1
 
-R24(config)#router bgp 520
-R24(config-router)#neighbor 10.0.0.34 remote-as 520
-R24(config-router)#neighbor 10.0.0.37 remote-as 520
+R25#show running-config | sect bgp
+router bgp 520
+ bgp log-neighbor-changes
+ network 10.0.0.39
+ redistribute connected
+ neighbor 10.1.0.24 remote-as 520
+ neighbor 10.1.0.24 update-source Loopback1
 
-R25(config)#router bgp 520
-R25(config-router)#neighbor 10.0.0.32 remote-as 520
-R25(config-router)#neighbor 10.0.0.41 remote-as 520
-
-R26(config)#router bgp 520
-R26(config-router)#neighbor 10.0.0.40 remote-as 520
-R26(config-router)#neighbor 10.0.0.36 remote-as 520
-
-```
-
-- В качестве RR буду использовать R24, поэтому на нем подымаем соседство с R25. Чтобы не зависить от физических интерфейсов, поднимаю на обоих Loopback-интерфейсы.
-
-```
-R24(config)#interface loopback 1
-R24(config-if)#ip address 10.1.0.24 255.255.255.255
-R24(config-if)#no shutdown
-R24(config-if)#exit
-R24(config)#router bgp 520
-R24(config-router)#neighbor 10.1.0.25 remote-as 520
-R24(config-router)#neighbor 10.1.0.25 update-source Loopback1
-
-R25(config)#interface loopback 1
-R25(config-if)#ip address 10.1.0.25 255.255.255.255
-R25(config-if)#no shutdown
-R25(config-if)#exit
-R25(config)#router bgp 520
-R25(config-router)#neighbor 10.1.0.24 remote-as 520
-R25(config-router)#neighbor 10.1.0.24 update-source Loopback1
+R26#show running-config | sect bgp
+router bgp 520
+ bgp log-neighbor-changes
+ network 192.168.102.0
+ redistribute connected
+ neighbor 10.0.0.24 remote-as 2042
+ neighbor 10.1.0.24 remote-as 520
+ neighbor 10.1.0.24 update-source Loopback1
 
 ```
-- Плюс необходимо прописать в isis редистрибуцию подключенных сетей.
+- На R24 настраиваю route-reflector.
 ```
-R24(config)#router isis
-R24(config-router)#redistribute connected
+R24#show running-config | sect bgp
+router bgp 520
+ bgp log-neighbor-changes
+ network 10.0.0.30 mask 255.255.255.254
+ redistribute connected
+ neighbor as520 peer-group
+ neighbor as520 remote-as 520
+ neighbor as520 update-source Loopback1
+ neighbor as520 route-reflector-client
+ neighbor 10.0.0.22 remote-as 2042
+ neighbor 10.0.0.28 remote-as 301
+ neighbor 10.1.0.23 peer-group as520
+ neighbor 10.1.0.25 peer-group as520
+ neighbor 10.1.0.26 peer-group as520
 
-R25(config)#router isis
-R25(config-router)#redistribute connected
+```
 
 ```
 - Проверка
 ```
 R24#show ip bgp summary
-...
+BGP router identifier 10.1.0.24, local AS number 520
+BGP table version is 100, main routing table version 100
+30 network entries using 4200 bytes of memory
+49 path entries using 3920 bytes of memory
+13/8 BGP path/bestpath attribute entries using 1872 bytes of memory
+6 BGP AS-PATH entries using 144 bytes of memory
+0 BGP route-map cache entries using 0 bytes of memory
+0 BGP filter-list cache entries using 0 bytes of memory
+BGP using 10136 total bytes of memory
+BGP activity 37/7 prefixes, 124/75 paths, scan interval 60 secs
+
 Neighbor        V           AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd
-10.0.0.22       4         2042    5040    5053       11    0    0 3d04h           1
-10.0.0.28       4          301    5046    5043       11    0    0 3d04h           4
-10.0.0.34       4          520    4207    4208       11    0    0 2d15h           0
-10.0.0.37       4          520    4197    4203       11    0    0 2d15h           0
-10.1.0.25       4          520     140     145       11    0    0 02:04:47        0
+10.0.0.22       4         2042      31      39      100    0    0 00:22:58        5
+10.0.0.28       4          301      57      56      100    0    0 00:39:47       15
+10.1.0.23       4          520    2644    2673      100    0    0 1d15h          13
+10.1.0.25       4          520   20303   20333      100    0    0 1w5d            5
+10.1.0.26       4          520      52      65      100    0    0 00:43:25        5
 
-R25#show ip bgp summary
-...
 
-Neighbor        V           AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd
-10.0.0.32       4          520    4069    4061        6    0    0 2d13h           0
-10.0.0.41       4          520    4064    4071        6    0    0 2d13h           0
-10.1.0.24       4          520       8       4        6    0    0 02:00:49        5
-```
-
-- Теперь включить Route Reflector.
-```
-R24(config-router)#neighbor 10.0.0.34 route-reflector-client
-R24(config-router)#
-*Dec  9 08:57:18.673: %BGP-5-ADJCHANGE: neighbor 10.0.0.34 Down RR client config change
-*Dec  9 08:57:18.673: %BGP_SESSION-5-ADJCHANGE: neighbor 10.0.0.34 IPv4 Unicast topology base removed from session  RR client config change
-*Dec  9 08:57:19.260: %BGP-5-ADJCHANGE: neighbor 10.0.0.34 Up
-R24(config-router)#neighbor 10.0.0.37 route-reflector-client
-R24(config-router)#
-*Dec  9 08:57:32.845: %BGP-5-ADJCHANGE: neighbor 10.0.0.37 Down RR client config change
-*Dec  9 08:57:32.845: %BGP_SESSION-5-ADJCHANGE: neighbor 10.0.0.37 IPv4 Unicast topology base removed from session  RR client config change
-*Dec  9 08:57:33.651: %BGP-5-ADJCHANGE: neighbor 10.0.0.37 Up
-R24(config-router)#neighbor 10.1.0.25 route-reflector-client
-R24(config-router)#
-*Dec  9 08:57:50.216: %BGP-5-ADJCHANGE: neighbor 10.1.0.25 Down RR client config change
-*Dec  9 08:57:50.216: %BGP_SESSION-5-ADJCHANGE: neighbor 10.1.0.25 IPv4 Unicast topology base removed from session  RR client config change
-*Dec  9 08:57:51.148: %BGP-5-ADJCHANGE: neighbor 10.1.0.25 Up
 ```
 
 #### 2.3 Настройте офис Москва так, чтобы приоритетным провайдером стал Ламас.
