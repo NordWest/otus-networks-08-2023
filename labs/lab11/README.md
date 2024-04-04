@@ -194,7 +194,7 @@ router bgp 520
 
 ```
 
-```
+
 - Проверка
 ```
 R24#show ip bgp summary
